@@ -29,8 +29,12 @@ if (length(args) >= 1) {
   if (!requireNamespace("readabs", quietly = TRUE)) stop("Install readabs: install.packages('readabs')")
   invisible(readabs::read_abs(cat_no = "5206.0", tables = 30, path = raw_dir,
                               check_local = FALSE, retain_files = TRUE, show_progress_bars = FALSE))
-  abs_file <- list.files(raw_dir, pattern = "^5206030.*\\.xlsx$", full.names = TRUE, ignore.case = TRUE)[1]
-  if (is.na(abs_file)) stop("ABS table 5206030 was not downloaded")
+  all_files <- list.files(raw_dir, recursive = TRUE, full.names = TRUE)
+  abs_file <- grep("5206030.*\\.xlsx?$", all_files, value = TRUE, ignore.case = TRUE)[1]
+  if (is.na(abs_file)) {
+    message("Files downloaded:\n", paste(all_files, collapse = "\n"))
+    stop("ABS table 5206030 was not found among the downloaded files")
+  }
 }
 message("Reading ", abs_file)
 
