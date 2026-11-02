@@ -1,0 +1,63 @@
+name: quarterly-forecast
+
+# The ABS releases the National Accounts (5206.0) in early March, June, September and December.
+# This runs a week later, rebuilds the inputs from the new release, re-estimates every model
+# and republishes the dashboard. "Run workflow" triggers it by hand.
+on:
+  schedule:
+    - cron: "0 1 12 3,6,9,12 *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::readabs
+            any::readxl
+            any::writexl
+            any::jsonlite
+            any::dplyr
+            any::tidyr
+            any::ggplot2
+            any::forecast
+            any::urca
+            any::vars
+            any::tseries
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pandas numpy openpyxl
+
+      - name: Download latest ABS release and build inputs
+        run: Rscript R/build_inputs.R
+
+      - name: Estimate models and forecast 4 quarters ahead
+        working-directory: output
+        env:
+          SFD_DATA_DIR: ../data
+        run: Rscript ../R/forecast_sfd_all_sectors_dlog.R
+
+      - name: Export results to the dashboard
+        run: python pipeline/export_results.py
+
+      - name: Commit results
+        run: |
+          git config user.name "forecast-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/ docs/ output/*.xlsx output/*.csv output/*.png
+          git commit -m "forecast: ABS data to $(jq -r .last_quarter data/inputs_manifest.json)" || echo "No changes"
+          git push

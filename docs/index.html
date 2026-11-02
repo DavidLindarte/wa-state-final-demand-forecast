@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WA State Final Demand Forecast</title>
+<meta name="description" content="Four-quarter forecast of Western Australia's State Final Demand from ARIMA, VECM and MinT-reconciled sector models, re-estimated automatically after each ABS National Accounts release.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --surface-0: #f4f3f0; --surface-1: #fcfcfb; --border: #e2e0da; --grid: #ebe9e4;
+    --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7a7974;
+    --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --actual: #0b0b0b; --bench: #9a9890;
+    --good: #0ca30c; --good-text: #006300; --critical-text: #b42f2f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface-0: #121211; --surface-1: #1a1a19; --border: #2e2e2b; --grid: #262624;
+      --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+      --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --actual: #f0efec; --bench: #77766f;
+      --good-text: #4cc94c; --critical-text: #f07b7b;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-0: #121211; --surface-1: #1a1a19; --border: #2e2e2b; --grid: #262624;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --actual: #f0efec; --bench: #77766f;
+    --good-text: #4cc94c; --critical-text: #f07b7b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface-0); color: var(--text-primary); font: 15px/1.55 Inter, system-ui, sans-serif; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 28px; line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.02em; }
+  h2 { font-size: 17px; margin: 0 0 4px; }
+  .sub { color: var(--text-secondary); margin: 0 0 8px; max-width: 720px; }
+  .meta { color: var(--text-muted); font-size: 13px; margin-bottom: 24px; }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text-primary); }
+  .live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .grid3, .grid2 { grid-template-columns: 1fr; } }
+  .grid3 .card, .grid2 .card { margin-bottom: 0; }
+  .grid3 > *, .grid2 > * { min-width: 0; }
+  .label { color: var(--text-secondary); font-size: 13px; font-weight: 500; }
+  .big { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin: 4px 0 2px; }
+  .note { color: var(--text-muted); font-size: 13px; margin: 0; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin: 10px 0 8px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .chart-box { position: relative; height: 320px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--text-secondary); font-weight: 500; }
+  .table-scroll { overflow-x: auto; }
+  .best td { font-weight: 600; }
+  figure { margin: 0; }
+  figure img { width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border); background: #fff; display: block; }
+  figcaption { color: var(--text-muted); font-size: 13px; margin-top: 6px; }
+  .steps { margin: 8px 0 0; padding-left: 18px; color: var(--text-secondary); }
+  .steps li { margin-bottom: 6px; }
+  footer { margin-top: 28px; color: var(--text-muted); font-size: 13px; }
+  a { color: var(--text-primary); }
+  .err { color: var(--critical-text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Western Australia State Final Demand: 4-quarter forecast</h1>
+  <p class="sub">State Final Demand is the sum of household consumption, private investment and public spending. Each sector is modelled from its components using ARIMA and VECM models, reconciled so the parts add up to the total (MinT). The forecast is re-estimated automatically after every ABS National Accounts release.</p>
+  <div class="meta"><span class="live" id="vintage">Loading…</span> <span id="generated"></span></div>
+
+  <div class="grid3" id="tiles"></div>
+
+  <section class="card">
+    <h2>Quarterly growth: actual and forecast</h2>
+    <p class="note">Quarter-on-quarter growth, 100 × Δlog (≈ % change). Actual ABS data, then the next four quarters from each model.</p>
+    <div class="legend" id="legend"></div>
+    <div class="chart-box"><canvas id="growthChart" aria-label="SFD growth chart"></canvas></div>
+  </section>
+
+  <div class="grid2" style="margin-bottom:16px">
+    <section class="card">
+      <h2>Forecast by sector (headline model)</h2>
+      <p class="note">Combination A+B, $m chain volume, with each sector's contribution to SFD growth.</p>
+      <div class="table-scroll"><table id="sectorTable" style="margin-top:10px"></table></div>
+    </section>
+    <section class="card">
+      <h2>Hold-out test: last 4 quarters</h2>
+      <p class="note">Models refitted without the last four quarters, then compared with what the ABS actually published. A ratio below 1 beats the plain-average benchmark.</p>
+      <div class="table-scroll"><table id="holdoutTable" style="margin-top:10px"></table></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Model output</h2>
+    <p class="note">Charts produced by the R pipeline on every run.</p>
+    <div class="grid2" style="margin-top:12px">
+      <figure><img src="figures/sfd_forecast.png" alt="SFD level and 4-quarter forecast by model" loading="lazy"><figcaption>SFD level and 4-quarter forecast.</figcaption></figure>
+      <figure><img src="figures/sfd_holdout.png" alt="Hold-out test of the SFD forecast" loading="lazy"><figcaption>Hold-out test against the published ABS series.</figcaption></figure>
+      <figure><img src="figures/sfd_by_sector.png" alt="SFD forecast by sector" loading="lazy"><figcaption>Forecast split by sector.</figcaption></figure>
+      <figure><img src="figures/sfd_sectors_panel.png" alt="Sector forecasts panel" loading="lazy"><figcaption>Household, private and public sector forecasts.</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Method</h2>
+    <ol class="steps">
+      <li><b>Data:</b> ABS 5206.0 Table 30 (Western Australia), seasonally adjusted chain volume measures, quarterly from 1985. Downloaded and reshaped automatically.</li>
+      <li><b>Stationarity:</b> ADF and KPSS tests on every series in levels and differences. A COVID dummy handles 2020.</li>
+      <li><b>Model A:</b> an ARIMA for each sector total and each of its components, reconciled with MinT (shrinkage) so that the components add up to the total.</li>
+      <li><b>Model B:</b> a VECM on each sector's cointegrated block (household essentials vs discretionary spending; ownership transfer costs vs consumption; state and local consumption vs investment), plus ARIMA for the rest, then MinT.</li>
+      <li><b>Headline:</b> the average of A and B. SFD is the sum of the three sector forecasts, compared with an average-growth benchmark.</li>
+    </ol>
+  </section>
+
+  <footer>
+    Data: Australian Bureau of Statistics, 5206.0 Australian National Accounts (CC BY 4.0). Models in R (forecast, urca, vars). Pipeline: GitHub Actions, run quarterly.
+    MSc Predictive Analytics group project (Curtin University); this repository contains my sector-hierarchy model.<br>
+    Built by <a href="https://davidlindarte.github.io">David Lindarte Burgos</a> · <a href="https://github.com/DavidLindarte/wa-state-final-demand-forecast">Source code</a>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const f2 = x => x == null ? "–" : x.toFixed(2);
+const money = x => "$" + Math.round(x).toLocaleString("en-AU") + "m";
+const MODELS = [
+  { key: "Combination_dlog", name: "Combination A+B", color: "--series-1" },
+  { key: "MinT_A_dlog", name: "MinT (A)", color: "--series-2" },
+  { key: "Model_B_dlog", name: "VECM-MinT (B)", color: "--series-3" },
+  { key: "Bench_avg_growth_dlog", name: "Benchmark: average growth", color: "--bench", dash: [5, 4] },
+];
+const qLabel = q => { const [y, m] = q.split("-"); return y + " Q" + ({ "03": 1, "06": 2, "09": 3, "12": 4 })[m]; };
+let D, chart;
+
+function render() {
+  const fc = D.forecast_growth, sec = D.forecast_by_sector;
+  document.getElementById("vintage").textContent = "ABS data to " + qLabel(D.data.last_quarter);
+  document.getElementById("generated").textContent = " · models re-estimated " + D.generated_utc.slice(0, 10);
+  const cum = fc.reduce((s, r) => s + r.Combination_dlog, 0);
+  document.getElementById("tiles").innerHTML = `
+    <div class="card"><div class="label">Next quarter (${qLabel(fc[0].quarter)})</div><div class="big">+${f2(fc[0].Combination_dlog)}%</div><p class="note">SFD growth, headline model</p></div>
+    <div class="card"><div class="label">Next 4 quarters, cumulative</div><div class="big">+${f2(cum)}%</div><p class="note">To ${qLabel(fc[3].quarter)}, ≈ ${money(sec[3].SFD)}</p></div>
+    <div class="card"><div class="label">Year-on-year in ${qLabel(sec[3].quarter)}</div><div class="big">+${f2(sec[3].SFD_yy_pct)}%</div><p class="note">vs the same quarter a year earlier</p></div>`;
+
+  document.getElementById("legend").innerHTML =
+    `<span><span class="swatch" style="background:var(--actual)"></span>ABS actual</span>` +
+    MODELS.map(m => `<span><span class="swatch" style="background:var(${m.color})"></span>${m.name}</span>`).join("");
+
+  document.getElementById("sectorTable").innerHTML =
+    `<tr><th>Quarter</th><th>Household</th><th>Private</th><th>Public</th><th>SFD</th><th>Growth</th></tr>` +
+    sec.map(r => `<tr><td>${qLabel(r.quarter)}</td><td>${money(r.Household)}<br><span class="note">${f2(r.Household_contrib_pp)} pp</span></td>
+      <td>${money(r.Private)}<br><span class="note">${f2(r.Private_contrib_pp)} pp</span></td>
+      <td>${money(r.Public)}<br><span class="note">${f2(r.Public_contrib_pp)} pp</span></td>
+      <td>${money(r.SFD)}</td><td>+${f2(r.SFD_dlog)}%</td></tr>`).join("");
+
+  const ho = D.holdout_sfd.filter(r => !r.model.includes("historical mean"));
+  const best = Math.min(...ho.map(r => r.RMSE_logerr));
+  document.getElementById("holdoutTable").innerHTML =
+    `<tr><th>Model</th><th>RMSE (log level)</th><th>MAPE %</th><th>Ratio vs plain avg.</th></tr>` +
+    ho.map(r => `<tr class="${r.RMSE_logerr === best ? "best" : ""}"><td>${r.model}</td><td>${f2(r.RMSE_logerr)}</td><td>${f2(r.MAPE)}</td><td>${f2(r.ratio_vs_plain_average)}</td></tr>`).join("");
+  draw();
+}
+
+function draw() {
+  if (chart) chart.destroy();
+  const act = D.actual_recent.slice(-16), fc = D.forecast_growth;
+  const labels = [...act.map(r => qLabel(r.quarter)), ...fc.map(r => qLabel(r.quarter))];
+  const n = act.length, pad = Array(fc.length).fill(null);
+  const ds = [{ label: "ABS actual", data: [...act.map(r => r.growth), ...pad], borderColor: css("--actual"), backgroundColor: css("--actual"), pointRadius: 2 }];
+  MODELS.forEach(m => {
+    const series = Array(n - 1).fill(null).concat([act[n - 1].growth], fc.map(r => r[m.key]));
+    ds.push({ label: m.name, data: series, borderColor: css(m.color), backgroundColor: css(m.color), borderDash: m.dash || [], pointRadius: 2 });
+  });
+  const grid = css("--grid"), muted = css("--text-muted");
+  chart = new Chart(document.getElementById("growthChart"), {
+    type: "line", data: { labels, datasets: ds },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: "index", intersect: false },
+      elements: { line: { borderWidth: 2 }, point: { hoverRadius: 5 } },
+      plugins: { legend: { display: false },
+        tooltip: { backgroundColor: css("--surface-1"), titleColor: css("--text-primary"), bodyColor: css("--text-secondary"),
+          borderColor: css("--border"), borderWidth: 1, padding: 10, usePointStyle: true,
+          filter: i => i.parsed.y != null, callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(2)}%` } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: muted, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+        y: { grid: { color: grid }, border: { display: false }, ticks: { color: muted, callback: v => v + "%" } },
+      },
+    },
+  });
+}
+
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => D && draw());
+fetch("data/latest.json", { cache: "no-store" })
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(d => { D = d; render(); })
+  .catch(e => { document.getElementById("vintage").innerHTML = `<span class="err">Could not load results (${e.message})</span>`; });
+</script>
+</body>
+</html>
